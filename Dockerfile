@@ -5,6 +5,7 @@ WORKDIR /app
 
 RUN apt update && \
     apt upgrade -y && \
+    apt install -y wget curl && \
     pip install -r requirements.txt
 
 EXPOSE 8000
