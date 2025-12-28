@@ -1,13 +1,71 @@
+import ipaddress
+import logging
+import os
 import random
+import time
 
+import axiom_py
 import httpx
-from fastapi import FastAPI, Request, Form
+from axiom_py.logging import AxiomHandler
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
-
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
+
+client = axiom_py.Client(os.getenv("AXIOM_TOKEN"))
+handler = AxiomHandler(client, "random-anilist-picker")
+logging.getLogger().addHandler(handler)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
+def get_ipv4(ip_address: str) -> str:
+    """Convert IPv6 to IPv4 if possible"""
+
+    try:
+        ip_obj = ipaddress.ip_address(ip_address)
+
+        # Check if it's an IPv4-mapped IPv6 address
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+            return str(ip_obj.ipv4_mapped)
+
+        # Return as-is if already IPv4 or pure IPv6
+        return str(ip_obj)
+
+    except ValueError:
+        # Invalid IP, return as-is
+        return ip_address
+
+
+@app.middleware("http")
+async def log_requests_middleware(request: Request, call_next):
+    start_time = time.perf_counter()
+    response = await call_next(request)
+    process_time_ms = (time.perf_counter() - start_time) * 1_000
+
+    # Get the real client IP from proxy headers
+    # Since this is behind a reverse proxy, `request.client` keeps coming back as 127.0.0.1
+    client_ip = request.headers.get("x-forwarded-for")
+    if client_ip:
+        client_ip = client_ip.split(",")[0].strip()
+    else:
+        client_ip = request.client.host
+
+    logger.info(
+        "Request received",
+        extra={
+            "ip": get_ipv4(client_ip),
+            "method": request.method,
+            "path": request.url.path,
+            "status_code": response.status_code,
+            "response_time_ms": f"{process_time_ms:.2f}",
+            "user_agent": request.headers.get("user-agent"),
+        },
+    )
+
+    return response
 
 
 async def get_anime_by_status(username: str, status: str):
@@ -184,6 +242,11 @@ async def get_random(
         </div>
     </div>
     """
+
+
+@app.get("/robots.txt", response_class=PlainTextResponse)
+async def robots():
+    return "User-agent: *\nDisallow: /"
 
 
 if __name__ == "__main__":
