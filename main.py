@@ -4,21 +4,30 @@ import os
 import random
 import time
 
-import axiom_py
 import httpx
-from axiom_py.logging import AxiomHandler
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
+from opentelemetry import _logs
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
+from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
 
-client = axiom_py.Client(os.getenv("AXIOM_TOKEN"))
-handler = AxiomHandler(client, "random-anilist-picker")
-logging.getLogger().addHandler(handler)
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+resource = Resource.create({SERVICE_NAME: os.getenv("POSTHOG_SERVICE_NAME", "unknown")})
+logger_provider = LoggerProvider(resource=resource)
+_logs.set_logger_provider(logger_provider)
+otlp_exporter = OTLPLogExporter(
+    endpoint="https://us.i.posthog.com/i/v1/logs",
+    headers={"Authorization": f"Bearer {os.getenv('POSTHOG_TOKEN', None)}"},
+)
+logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_exporter))
+logging.basicConfig(level=logging.INFO)
+logging.getLogger().addHandler(LoggingHandler())
+logger = logging.getLogger(os.getenv("POSTHOG_SERVICE_NAME", "unknown"))
 
 
 def get_ipv4(ip_address: str) -> str:
