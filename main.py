@@ -1,80 +1,36 @@
-import ipaddress
-import logging
 import os
 import random
-import time
 
 import httpx
+import sentry_sdk
+from dotenv import load_dotenv
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.templating import Jinja2Templates
-from opentelemetry import _logs
-from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+
+
+load_dotenv()
+sentry_sdk.init(
+    dsn=os.getenv('SENTRY_DSN'),
+    # Add data like request headers and IP for users,
+    # see https://docs.sentry.io/platforms/python/data-management/data-collected/ for more info
+    send_default_pii=True,
+    # Enable sending logs to Sentry
+    enable_logs=True,
+    # Set traces_sample_rate to 1.0 to capture 100%
+    # of transactions for tracing.
+    traces_sample_rate=1.0,
+    # Set profile_session_sample_rate to 1.0 to profile 100%
+    # of profile sessions.
+    profile_session_sample_rate=0.1,
+    # Set profile_lifecycle to "trace" to automatically
+    # run the profiler on when there is an active transaction
+    profile_lifecycle="trace",
+)
+
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates")
-
-resource = Resource.create({SERVICE_NAME: os.getenv("POSTHOG_SERVICE_NAME", "unknown")})
-logger_provider = LoggerProvider(resource=resource)
-_logs.set_logger_provider(logger_provider)
-otlp_exporter = OTLPLogExporter(
-    endpoint="https://us.i.posthog.com/i/v1/logs",
-    headers={"Authorization": f"Bearer {os.getenv('POSTHOG_TOKEN', None)}"},
-)
-logger_provider.add_log_record_processor(BatchLogRecordProcessor(otlp_exporter))
-logging.basicConfig(level=logging.INFO)
-logging.getLogger().addHandler(LoggingHandler())
-logger = logging.getLogger(os.getenv("POSTHOG_SERVICE_NAME", "unknown"))
-
-
-def get_ipv4(ip_address: str) -> str:
-    """Convert IPv6 to IPv4 if possible"""
-
-    try:
-        ip_obj = ipaddress.ip_address(ip_address)
-
-        # Check if it's an IPv4-mapped IPv6 address
-        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
-            return str(ip_obj.ipv4_mapped)
-
-        # Return as-is if already IPv4 or pure IPv6
-        return str(ip_obj)
-
-    except ValueError:
-        # Invalid IP, return as-is
-        return ip_address
-
-
-@app.middleware("http")
-async def log_requests_middleware(request: Request, call_next):
-    start_time = time.perf_counter()
-    response = await call_next(request)
-    process_time_ms = (time.perf_counter() - start_time) * 1_000
-
-    # Get the real client IP from proxy headers
-    # Since this is behind a reverse proxy, `request.client` keeps coming back as 127.0.0.1
-    client_ip = request.headers.get("x-forwarded-for")
-    if client_ip:
-        client_ip = client_ip.split(",")[0].strip()
-    else:
-        client_ip = request.client.host
-
-    logger.info(
-        "Request received",
-        extra={
-            "ip": get_ipv4(client_ip),
-            "method": request.method,
-            "path": request.url.path,
-            "status_code": response.status_code,
-            "response_time_ms": f"{process_time_ms:.2f}",
-            "user_agent": request.headers.get("user-agent"),
-        },
-    )
-
-    return response
 
 
 async def get_anime_by_status(username: str, status: str):
@@ -181,6 +137,8 @@ async def get_random(
     title = anime["title"]["english"] or anime["title"]["romaji"]
     romaji = anime["title"]["romaji"] if anime["title"]["romaji"] != title else None
     native = anime["title"]["native"]
+
+    sentry_sdk.logger.info(f"User: {username} | Anime: {title}")
 
     # Build genres string
     genres_str = ", ".join(anime["genres"]) if anime["genres"] else "N/A"

@@ -4,12 +4,4 @@
     <option name="sdkName" value="uv (anilist-random-picker)" />
   </component>
   <component name="ProjectRootManager" version="2" project-jdk-name="uv (anilist-random-picker)" project-jdk-type="Python SDK" />
-  <component name="RuffConfiguration">
-    <option name="enabled" value="true" />
-    <option name="executableDiscoveryMode" value="PATH" />
-  </component>
-  <component name="TyConfiguration">
-    <option name="enabled" value="true" />
-    <option name="executableDiscoveryMode" value="PATH" />
-  </component>
 </project>

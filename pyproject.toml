@@ -9,9 +9,8 @@ dependencies = [
     "granian[uvloop]>=2.6.0",
     "httpx>=0.28.1",
     "jinja2>=3.1.6",
-    "opentelemetry-api>=1.42.1",
-    "opentelemetry-exporter-otlp>=1.42.1",
-    "opentelemetry-sdk>=1.42.1",
+    "python-dotenv>=1.2.1",
     "python-multipart>=0.0.21",
+    "sentry-sdk>=2.48.0",
     "uvicorn>=0.38.0",
 ]
